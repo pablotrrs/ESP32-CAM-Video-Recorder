@@ -1,28 +1,30 @@
+#include "Arduino.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_camera.h"
 #include "sensor.h"
 
-// user edits here:
 static const char vernum[] = "v58";
 char devname[30];
-String devstr =  "bpcam";
+String devstr =  "desklens";
 
-int IncludeInternet = 3;      // 0 for no internet, 1 for time only, 2 streaming with WiFiMan, 3 ssid in file, 4 default internet on and file
-const char* ssid = "anSSID";
-const char* password = "aPassword";
+int IncludeInternet = 0;      // 0 for no internet, 1 for time only, 2 streaming with WiFiMan, 3 ssid in file, 4 default internet on and file
+
+const char* ssid = "jzjzjz";
+const char* password = "jzjzjz";
+
 String TIMEZONE = "<-03>3";
-
 #define Lots_of_Stats 1
-int framesize = FRAMESIZE_VGA;
-int quality = 15;
+
+int framesize = FRAMESIZE_HD;
+int quality = 12;
 int framesizeconfig = FRAMESIZE_UXGA;
 int qualityconfig = 5;
 int buffersconfig = 3;
-int avi_length = 300;            // how long a movie in seconds -- 1800 sec = 30 min
+int avi_length = 1800;            // how long a movie in seconds -- 1800 sec = 30 min
 int frame_interval = 0;          // record at full speed
 int speed_up_factor = 1;          // play at realtime
-int stream_delay = 0;           // minimum of 500 ms delay between frames
+int stream_delay = 500;           // minimum of 500 ms delay between frames
 int MagicNumber = 12;                // change this number to reset the eprom in your esp32 for file numbers
 
 bool configfile = false;
@@ -116,7 +118,6 @@ long wait_for_cam = 0;
 
 int do_it_now = 0;
 
-//  Avi Writer Stuff here
 // MicroSD
 #include "driver/sdmmc_host.h"
 #include "driver/sdmmc_defs.h"
@@ -220,7 +221,6 @@ const int avi_header[AVIOFFSET] PROGMEM = {
   0x76, 0x35, 0x38, 0x20, 0x4C, 0x49, 0x53, 0x54, 0x00, 0x01, 0x0E, 0x00, 0x6D, 0x6F, 0x76, 0x69,
 };
 
-// Writes an uint32_t in Big Endian at current file position
 static void inline print_quartet(unsigned long i, File fd) {
   uint8_t y[4];
   y[0] = i % 0x100;
@@ -230,7 +230,6 @@ static void inline print_quartet(unsigned long i, File fd) {
   size_t i1_err = fd.write(y , 4);
 }
 
-// Writes 2 uint32_t in Big Endian at current file position
 static void inline print_2quartet(unsigned long i, unsigned long j, File fd) {
   uint8_t y[8];
   y[0] = i % 0x100;
@@ -244,12 +243,11 @@ static void inline print_2quartet(unsigned long i, unsigned long j, File fd) {
   size_t i1_err = fd.write(y , 8);
 }
 
-// if we have no camera, or sd card, then flash rear led on and off to warn the human SOS - SOS
 void major_fail() {
   Serial.println(" ");
   logfile.close();
 
-  for (int i = 0;  i < 10; i++) {                 // 10 loops or about 100 seconds then reboot
+  for  (int i = 0;  i < 10; i++) {                 // 10 loops or about 100 seconds then reboot
     for (int j = 0; j < 3; j++) {
       digitalWrite(33, LOW);   delay(150);
       digitalWrite(33, HIGH);  delay(150);
@@ -304,10 +302,8 @@ static void config_camera() {
     Serial.printf("Internal Total heap %d, internal Free Heap %d, ", ESP.getHeapSize(), ESP.getFreeHeap());
     Serial.printf("SPIRam Total heap   %d, SPIRam Free Heap   %d\n", ESP.getPsramSize(), ESP.getFreePsram());
   }
-
   esp_err_t cam_err = ESP_FAIL;
   int attempt = 5;
-
   while (attempt && cam_err != ESP_OK) {
     cam_err = esp_camera_init(&config);
     if (cam_err != ESP_OK) {
@@ -341,6 +337,7 @@ static void config_camera() {
 
   ss->set_quality(ss, quality);
   ss->set_framesize(ss, (framesize_t)framesize);
+
   ss->set_brightness(ss, 1);  //up the blightness just a bit
   ss->set_saturation(ss, -2); //lower the saturation
 
@@ -376,6 +373,7 @@ static esp_err_t init_sdcard() {
 
     uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
     Serial.printf("SD_MMC Card Size: %lluMB\n", cardSize);
+
   } else {
     Serial.printf("Failed to mount SD card VFAT filesystem. \n");
     Serial.println("Do you have an SD Card installed?");
@@ -386,7 +384,9 @@ static esp_err_t init_sdcard() {
   return ESP_OK;
 }
 
+//File: simple.txt, Size: 2330
 #define simple_txt_len 2330
+//const uint8_t simple_txt[] PROGMEM = {
 const char simple_txt[] PROGMEM = {
   0x64, 0x65, 0x73, 0x6B, 0x6C, 0x65, 0x6E, 0x73, 0x20, 0x20, 0x2F, 0x2F, 0x20, 0x63, 0x61, 0x6D,
   0x65, 0x72, 0x61, 0x20, 0x6E, 0x61, 0x6D, 0x65, 0x0D, 0x0A, 0x31, 0x31, 0x20, 0x20, 0x2F, 0x2F,
@@ -538,14 +538,14 @@ const char simple_txt[] PROGMEM = {
 
 void read_config_file() {
   String junk;
-  String cname = "desklens";
 
+  String cname = "desklens";
   int cframesize = 11;
   int cquality = 12;
   int cframesizeconfig = 13;
   int cqualityconfig = 5;
   int cbuffersconfig = 3;
-  int clength = 300;
+  int clength = 1800;
   int cinterval = 0;
   int cspeedup = 1;
   int cstreamdelay = 0;
@@ -556,11 +556,13 @@ void read_config_file() {
 
   File config_file = SD_MMC.open("/config.txt", "r");
   if (config_file) {
+
     Serial.println("Reading simple.txt");
     cname = config_file.readStringUntil(' ');
     junk = config_file.readStringUntil('\n');
     cframesize = config_file.parseInt();
     junk = config_file.readStringUntil('\n');
+
     clength = config_file.parseInt();
     junk = config_file.readStringUntil('\n');
     cinterval = config_file.parseInt();
@@ -586,10 +588,12 @@ void read_config_file() {
     }
   } else {
     Serial.println("Failed to open config.txt - writing a default");
+
     // lets make a simple.txt config file
     File new_simple = SD_MMC.open("/config.txt", "w");
     new_simple.print(simple_txt);
     new_simple.close();
+
   }
 
   Serial.printf("=========   Data fram config.txt and defaults  =========\n");
@@ -608,6 +612,7 @@ void read_config_file() {
   Serial.printf("ssid %s\n", cssid); logfile.printf("ssid %s\n", cssid);
   Serial.printf("pass %s\n", cpass); logfile.printf("pass %s\n", cpass);
 
+
   framesize = cframesize;
   quality = cquality;
   framesizeconfig = cframesizeconfig;
@@ -622,10 +627,11 @@ void read_config_file() {
   TIMEZONE = czone;
 
   cname.toCharArray(devname, cname.length() + 1);
+
 }
 
-//  delete_old_stuff() - delete oldest files to free diskspace
 void listDir( const char * dirname, uint8_t levels) {
+
   Serial.printf("Listing directory: %s\n", "/");
 
   File root = SD_MMC.open("/");
@@ -656,60 +662,8 @@ void listDir( const char * dirname, uint8_t levels) {
   }
 }
 
-void delete_old_stuff() {
-  Serial.printf("Total space: %lluMB\n", SD_MMC.totalBytes() / (1024 * 1024));
-  Serial.printf("Used space: %lluMB\n", SD_MMC.usedBytes() / (1024 * 1024));
-
-  float full = 1.0 * SD_MMC.usedBytes() / SD_MMC.totalBytes();;
-  if (full  <  0.8) {
-    Serial.printf("Nothing deleted, %.1f%% disk full\n", 100.0 * full);
-  } else {
-    Serial.printf("Disk is %.1f%% full ... deleting oldest file\n", 100.0 * full);
-    while (full > 0.8) {
-
-      double del_number = 999999999;
-      char del_numbername[50];
-
-      File f = SD_MMC.open("/");
-
-      File file = f.openNextFile();
-
-      while (file) {
-        //Serial.println(file.name());
-        if (!file.isDirectory()) {
-
-          char foldname[50];
-          strcpy(foldname, file.name());
-          for ( int x = 0; x < 50; x++) {
-            if ( (foldname[x] >= 0x30 && foldname[x] <= 0x39) || foldname[x] == 0x2E) {
-            } else {
-              if (foldname[x] != 0) foldname[x] = 0x20;
-            }
-          }
-
-          double i = atof(foldname);
-          if ( i > 0 && i < del_number) {
-            strcpy (del_numbername, file.name());
-            del_number = i;
-          }
-        }
-
-        file = f.openNextFile();
-      }
-      Serial.printf("lowest is Name is %s, number is %f\n", del_numbername, del_number);
-
-      if (del_number < 999999999) {
-        deleteFolderOrFile(del_numbername);
-      }
-
-      full = 1.0 * SD_MMC.usedBytes() / SD_MMC.totalBytes();
-      Serial.printf("Disk is %.1f%% full ... \n", 100.0 * full);
-      f.close();
-    }
-  }
-}
-
 void deleteFolderOrFile(const char * val) {
+  // Function provided by user @gemi254
   Serial.printf("Deleting : %s\n", val);
   File f = SD_MMC.open("/" + String(val));
   if (!f) {
@@ -743,6 +697,7 @@ void deleteFolderOrFile(const char * val) {
     } else {
       Serial.println("Remove dir failed");
     }
+
   } else {
     //Remove the file
     if (SD_MMC.remove("/" + String(val))) {
@@ -753,9 +708,66 @@ void deleteFolderOrFile(const char * val) {
   }
 }
 
-//  get_good_jpeg()  - take a picture and make sure it has a good jpeg
+void delete_old_stuff() {
+
+  Serial.printf("Total space: %lluMB\n", SD_MMC.totalBytes() / (1024 * 1024));
+  Serial.printf("Used space: %lluMB\n", SD_MMC.usedBytes() / (1024 * 1024));
+
+  //listDir( "/", 0);
+
+  float full = 1.0 * SD_MMC.usedBytes() / SD_MMC.totalBytes();;
+  if (full  <  0.8) {
+    Serial.printf("Nothing deleted, %.1f%% disk full\n", 100.0 * full);
+  } else {
+    Serial.printf("Disk is %.1f%% full ... deleting oldest file\n", 100.0 * full);
+    while (full > 0.8) {
+
+      double del_number = 999999999;
+      char del_numbername[50];
+
+      File f = SD_MMC.open("/");
+
+      File file = f.openNextFile();
+
+      while (file) {
+        //Serial.println(file.name());
+        if (!file.isDirectory()) {
+
+          char foldname[50];
+          strcpy(foldname, file.name());
+          for ( int x = 0; x < 50; x++) {
+            if ( (foldname[x] >= 0x30 && foldname[x] <= 0x39) || foldname[x] == 0x2E) {
+            } else {
+              if (foldname[x] != 0) foldname[x] = 0x20;
+            }
+          }
+
+          double i = atof(foldname);
+          if ( i > 0 && i < del_number) {
+            strcpy (del_numbername, file.name());
+            del_number = i;
+          }
+          //Serial.printf("Name is %s, number is %f\n", foldname, i);
+        }
+        file = f.openNextFile();
+
+      }
+      Serial.printf("lowest is Name is %s, number is %f\n", del_numbername, del_number);
+      if (del_number < 999999999) {
+        deleteFolderOrFile(del_numbername);
+      }
+      full = 1.0 * SD_MMC.usedBytes() / SD_MMC.totalBytes();
+      Serial.printf("Disk is %.1f%% full ... \n", 100.0 * full);
+      f.close();
+    }
+  }
+}
+
+
 camera_fb_t *  get_good_jpeg() {
+
   camera_fb_t * fb;
+
   long start;
   int failures = 0;
 
@@ -794,6 +806,7 @@ camera_fb_t *  get_good_jpeg() {
               if (j > 900) {                             //  rarely happens - sometimes on 2640
                 Serial.print("Frame "); Serial.print(frame_cnt); logfile.print("Frame "); logfile.print(frame_cnt);
                 Serial.print(", Len = "); Serial.print(fblen); logfile.print(", Len = "); logfile.print(fblen);
+                //Serial.print(", Correct Len = "); Serial.print(fblen - j + 1);
                 Serial.print(", Extra Bytes = "); Serial.println( j - 1); logfile.print(", Extra Bytes = "); logfile.println( j - 1);
                 logfile.flush();
               }
@@ -819,6 +832,7 @@ camera_fb_t *  get_good_jpeg() {
 
       } else {
         break;
+        // count up the useless bytes
       }
     }
 
@@ -844,7 +858,6 @@ camera_fb_t *  get_good_jpeg() {
   return fb;
 }
 
-//  eprom functions  - increment the file_group, so files are always unique
 #include <EEPROM.h>
 
 struct eprom_data {
@@ -852,7 +865,22 @@ struct eprom_data {
   int file_group;
 };
 
+void do_eprom_write() {
+
+  eprom_data ed;
+  ed.eprom_good = MagicNumber;
+  ed.file_group  = file_group;
+
+  Serial.println("Writing to EPROM ...");
+
+  EEPROM.begin(200);
+  EEPROM.put(0, ed);
+  EEPROM.commit();
+  EEPROM.end();
+}
+
 void do_eprom_read() {
+
   eprom_data ed;
 
   EEPROM.begin(200);
@@ -871,26 +899,8 @@ void do_eprom_read() {
   file_number = 1;
 }
 
-void do_eprom_write() {
-  eprom_data ed;
-  ed.eprom_good = MagicNumber;
-  ed.file_group  = file_group;
-
-  Serial.println("Writing to EPROM ...");
-
-  EEPROM.begin(200);
-  EEPROM.put(0, ed);
-  EEPROM.commit();
-  EEPROM.end();
-}
-
-// Make the avi functions
-//   start_avi() - open the file and write headers
-//   another_pic_avi() - write one more frame of movie
-//   end_avi() - write the final parameters and close the file
-
-// start_avi - open the files and write in headers
 static void start_avi() {
+
   long start = millis();
 
   Serial.println("Starting an avi ");
@@ -966,9 +976,8 @@ static void start_avi() {
 
 } 
 
-//  another_save_avi saves another frame to the avi file, uodates index
-//           -- pass in a fb pointer to the frame to add
 static void another_save_avi(camera_fb_t * fb ) {
+
   long start = millis();
 
   int fblen;
@@ -1042,6 +1051,7 @@ static void another_save_avi(camera_fb_t * fb ) {
     delay(0);
   }
 
+
   movi_size += jpeg_size;
   uVideoLen += jpeg_size;
   long frame_write_end = millis();
@@ -1064,10 +1074,11 @@ static void another_save_avi(camera_fb_t * fb ) {
 
   avifile.flush();
 
+
 } 
 
-//  end_avi writes the index, and closes the files
 static void end_avi() {
+
   long start = millis();
 
   unsigned long current_end = avifile.position();
@@ -1081,6 +1092,7 @@ static void end_avi() {
     avifile.close();
     int xx = remove("/idx.tmp");
     int yy = remove(avi_file_name);
+
   } else {
 
     elapsedms = millis() - startms;
@@ -1231,6 +1243,7 @@ typedef enum {
 const word filemanagerport = 8080;
 ESPxWebFlMgr filemgr(filemanagerport); // we want a different port than the webserver
 
+
 time_t now;
 struct tm timeinfo;
 char localip[20];
@@ -1245,6 +1258,7 @@ bool init_wifi() {
   if (IncludeInternet >= 3) {
 
     WiFi.disconnect(true, true);
+    //WiFi.mode(WIFI_STA);  // https://github.com/espressif/arduino-esp32/issues/6086
     WiFi.setHostname(devname);
     WiFi.mode(WIFI_STA);
     char ssidch[20];
@@ -1261,6 +1275,7 @@ bool init_wifi() {
     }
     configTime(0, 0, "pool.ntp.org");
     char tzchar[60];
+    //Serial.printf("Str >%s<, Char >%s<\n",TIMEZONE,tzchar);
     TIMEZONE.toCharArray(tzchar, TIMEZONE.length());          // name of your camera for mDNS, Router, and filenames
     setenv("TZ", tzchar, 1);  // mountain time zone from #define at top
     tzset();
@@ -1285,6 +1300,7 @@ bool init_wifi() {
     }
 
     eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+      //  info.disconnected.reason ==>  info.wifi_sta_disconnected.reason - update with esp32_arduino 2.00 v58
       if (info.wifi_sta_disconnected.reason != 201) {
         Serial.printf( "\nframe_cnt: %8d, WiFi event Reason: %d , Status: %d\n", frame_cnt, info.wifi_sta_disconnected.reason, WiFi.status());
         logfile.printf("\nframe_cnt: %8d, WiFi event Reason: %d , Status: %d\n", frame_cnt, info.wifi_sta_disconnected.reason, WiFi.status());
@@ -1296,9 +1312,14 @@ bool init_wifi() {
     WiFiManager wm;
     bool res;
     wm.setHostname(devname);
+    //wm.resetSettings();  // for debugging - erase the ssid every time
+
     wm.setConnectTimeout(30); // how long to try to connect for before continuing
     wm.setConfigPortalTimeout(60); // auto close configportal after n seconds
+    // res = wm.autoConnect(); // auto generated AP name from chipid
+
     res = wm.autoConnect("ESP32-CAM"); // use the devname defined above, with no password
+    //res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
 
     if (res) {
       Serial.println("Succesful Connection using WiFiManager");
@@ -1307,6 +1328,7 @@ bool init_wifi() {
       eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
         Serial.printf( "\nframe_cnt: %8d, WiFi event Reason: %d , Status: %d\n", frame_cnt, info.wifi_sta_disconnected.reason, WiFi.status());
         logfile.printf("\nframe_cnt: %8d, WiFi event Reason: %d , Status: %d\n", frame_cnt, info.wifi_sta_disconnected.reason, WiFi.status());
+
       });
 
       configTime(0, 0, "pool.ntp.org");
@@ -1314,6 +1336,7 @@ bool init_wifi() {
       TIMEZONE.toCharArray(tzchar, TIMEZONE.length());          // name of your camera for mDNS, Router, and filenames
       setenv("TZ", tzchar, 1);  // mountain time zone from #define at top
       tzset();
+
       time(&now);
 
       while (now < 15) {        // try for 5 seconds to get the time, then give up - 10 seconds after boot
@@ -1327,21 +1350,26 @@ bool init_wifi() {
       Serial.print("IP: "); Serial.println(localip); Serial.println(" ");
       InternetOff = false;
     } else {
+
       InternetOff = true;
       Serial.println("Internet failed using WiFiManager - not starting Web services");
     }
   }
 
   wifi_ps_type_t the_type;
+
   esp_err_t get_ps = esp_wifi_get_ps(&the_type);
   Serial.printf("The power save was: %d\n", the_type);
+
   Serial.printf("Set power save to %d\n", WIFI_PS_NONE);
   esp_err_t set_ps = esp_wifi_set_ps(WIFI_PS_NONE);
+
   esp_err_t new_ps = esp_wifi_get_ps(&the_type);
   Serial.printf("The power save is : %d\n", the_type);
 
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, brown_reg_temp);
   return true;
+
 }
 
 #include <HTTPClient.h>
@@ -1350,11 +1378,14 @@ httpd_handle_t camera_httpd = NULL;
 char the_page[4000];
 
 static esp_err_t capture_handler(httpd_req_t *req) {
+
   long start = millis();
+
   camera_fb_t * fb = NULL;
   esp_err_t res = ESP_OK;
   char fname[100];
   int file_number = 0;
+
   file_number++;
 
   sprintf(fname, "inline; filename=capture_%d.jpg", file_number);
@@ -1380,6 +1411,7 @@ static esp_err_t capture_handler(httpd_req_t *req) {
 }
 
 static esp_err_t index_handler(httpd_req_t *req) {
+
   long start = millis();
 
   Serial.print("http index, core ");  Serial.print(xPortGetCoreID());
@@ -1421,6 +1453,7 @@ static esp_err_t index_handler(httpd_req_t *req) {
 </body>
 </html>)rawliteral";
 
+
   int time_left = (- millis() +  (avi_start_time + avi_length * 1000)) / 1000;
 
   if (start_record == 0) {
@@ -1431,6 +1464,7 @@ static esp_err_t index_handler(httpd_req_t *req) {
           framesize, quality, frame_cnt, most_recent_avg_framesize, most_recent_fps, time_left,
           localip, localip, localip, localip, localip, filemanagerport, localip );
 
+
   httpd_resp_send(req, the_page, strlen(the_page));
 
   time_in_web1 += (millis() - start);
@@ -1438,10 +1472,13 @@ static esp_err_t index_handler(httpd_req_t *req) {
 }
 
 static esp_err_t photos_handler(httpd_req_t *req) {
+
   long start = millis();
 
   Serial.print("http photos, core ");  Serial.print(xPortGetCoreID());
   Serial.print(", priority = "); Serial.println(uxTaskPriorityGet(NULL));
+  //Serial.printf("Internal Total heap %d, internal Free Heap %d\n", ESP.getHeapSize(), ESP.getFreeHeap());
+  //Serial.printf("SPIRam Total heap   %d, SPIRam Free Heap   %d\n", ESP.getPsramSize(), ESP.getFreePsram());
 
   const char the_message[] = "Status";
 
@@ -1496,10 +1533,15 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 static esp_err_t reboot_handler(httpd_req_t *req) {
+
   long start = millis();
 
   Serial.print("http reboot, core ");  Serial.print(xPortGetCoreID());
   Serial.print(", priority = "); Serial.println(uxTaskPriorityGet(NULL));
+  //Serial.printf("Internal Total heap %d, internal Free Heap %d\n", ESP.getHeapSize(), ESP.getFreeHeap());
+  //Serial.printf("SPIRam Total heap   %d, SPIRam Free Heap   %d\n", ESP.getPsramSize(), ESP.getFreePsram());
+
+  //start_record = 0;
   reboot_now = true;
 
   const char the_message[] = "Status";
@@ -1532,7 +1574,6 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-//  Streaming stuff based on Random Nerd
 bool start_streaming = false;
 
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -1544,6 +1585,7 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 void the_streaming_loop (void* pvParameter);
 
 static esp_err_t stream_handler(httpd_req_t *req) {
+
   long start = millis();
 
   Serial.print("stream_handler, core ");  Serial.print(xPortGetCoreID());
@@ -1554,6 +1596,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   xTaskCreatePinnedToCore( the_streaming_loop, "the_streaming_loop", 8000, req, 1, &the_streaming_loop_task, 0);
 
   if ( the_streaming_loop_task == NULL ) {
+    //vTaskDelete( xHandle );
     Serial.printf("do_the_steaming_task failed to start! %d\n", the_streaming_loop_task);
   }
 
@@ -1561,6 +1604,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 
   while (start_streaming == true) {          // we have to keep the *req alive
     delay(1000);
+    //Serial.print("z");
   }
   Serial.println(" streaming done");
   delay(500);
@@ -1568,6 +1612,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 }
 
 void the_streaming_loop (void* pvParameter) {
+
   httpd_req_t *req;
   camera_fb_t * fb = NULL;
   esp_err_t res = ESP_OK;
@@ -1620,16 +1665,19 @@ void the_streaming_loop (void* pvParameter) {
 
     res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
     if (res != ESP_OK) {
+      //Serial.printf("Stream error - 1st send chunk %d\n",res);
       start_streaming = false;
     }
 
     res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
     if (res != ESP_OK) {
+      //Serial.printf("Stream error - 2nd send chunk %d\n",res);
       start_streaming = false;
     }
 
     res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
     if (res != ESP_OK) {
+      //Serial.printf("Stream error - 3rd send chunk %d\n", res);
       start_streaming = false;
     }
 
@@ -1654,7 +1702,6 @@ void the_streaming_loop (void* pvParameter) {
     }
   }  // stream forever
 }
-
 
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -1714,6 +1761,7 @@ void the_sd_loop (void* pvParameter);
 void delete_old_stuff();
 
 void setup() {
+
   Serial.begin(115200);
   Serial.println("\n\n---");
 
@@ -1725,6 +1773,8 @@ void setup() {
 
   pinMode(12, INPUT_PULLUP);        // pull this down to stop recording
   pinMode(13, INPUT_PULLUP);        // pull this down switch wifi
+
+  //Serial.setDebugOutput(true);
 
   Serial.println("                                    ");
   Serial.println("-------------------------------------");
@@ -1771,6 +1821,7 @@ void setup() {
   Serial.println("Try to get parameters from config.txt ...");
   read_config_file();
 
+
   char logname[50];
   sprintf(logname, "/%s%d.999.txt",  devname, file_group);
   Serial.printf("Creating logfile %s\n",  logname);
@@ -1779,7 +1830,6 @@ void setup() {
   if (!logfile) {
     Serial.println("Failed to open logfile for writing");
   }
-
   if (IncludeInternet > 0) {
     Serial.println("Starting the wifi ...");
     init_wifi();
@@ -1799,14 +1849,14 @@ void setup() {
 
   digitalWrite(33, HIGH);         // red light turns off when setup is complete
 
-  if (!InternetOff && IncludeInternet == 1) {
+  if ( !InternetOff && IncludeInternet == 1) {
     Serial.printf("Shutting off WiFi now \n\n");
     delay(1000);
     WiFi.disconnect();
     InternetOff = true;
   }
 
-  if (!InternetOff && IncludeInternet > 1) {
+  if ( !InternetOff && IncludeInternet > 1) {
     Serial.println("Starting Web Services ...");
     startCameraServer();
   }
@@ -1846,22 +1896,22 @@ void setup() {
   Serial.println("  End of setup()\n\n");
 }
 
-// the_sd_loop()
 void the_sd_loop (void* pvParameter) {
+
   Serial.print("the_sd_loop, core ");  Serial.print(xPortGetCoreID());
   Serial.print(", priority = "); Serial.println(uxTaskPriorityGet(NULL));
 
-  while(1) {
+  while (1) {
     xSemaphoreTake( sd_go, portMAX_DELAY );            // we wait for camera loop to tell us to go
     another_save_avi( fb_curr);                        // do the actual sd wrte
     xSemaphoreGive( wait_for_sd );                     // tell camera loop we are done
   }
 }
 
-// the_camera_loop()
 int delete_old_stuff_flag = 0;
 
 void the_camera_loop (void* pvParameter) {
+
   Serial.print("the camera loop, core ");  Serial.print(xPortGetCoreID());
   Serial.print(", priority = "); Serial.println(uxTaskPriorityGet(NULL));
 
@@ -1876,6 +1926,7 @@ void the_camera_loop (void* pvParameter) {
     ///////////////////  NOTHING TO DO //////////////////
     if (frame_cnt == 0 && start_record == 0) {
 
+      // Serial.println("Do nothing");
       if (we_are_already_stopped == 0) Serial.println("\n\nDisconnect Pin 12 from GND to start recording.\n\n");
       we_are_already_stopped = 1;
       delay(100);
@@ -1886,6 +1937,8 @@ void the_camera_loop (void* pvParameter) {
       //Serial.println("Ready to start");
 
       we_are_already_stopped = 0;
+
+      //delete_old_stuff(); // move to loop
 
       avi_start_time = millis();
       Serial.printf("\nStart the avi ... at %d\n", avi_start_time);
@@ -1948,6 +2001,9 @@ void the_camera_loop (void* pvParameter) {
 
       ///////////////////  ANOTHER FRAME  //////////////////
     } else if (frame_cnt > 0 && start_record != 0) {  // another frame of the avi
+
+      //Serial.println("Another frame");
+
       current_frame_time = millis();
       if (current_frame_time - last_frame_time < frame_interval) {
         delay(frame_interval - (current_frame_time - last_frame_time));             // delay for timelapse
@@ -1998,12 +2054,11 @@ void the_camera_loop (void* pvParameter) {
   }
 }
 
-// loop() - loop runs at low prio, so I had to move it to the task the_camera_loop at higher priority
-//long next_delete = 1000;
-
 void loop() {
   long run_time = millis() - boot_time;
 
+  //  if ( millis() > next_delete){
+  //    next_delete = millis() + (15 * 60 * 1000);
   if (delete_old_stuff_flag == 1) {
     delete_old_stuff_flag = 0;
     delete_old_stuff();
